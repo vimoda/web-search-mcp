@@ -1,57 +1,57 @@
 # web-search-mcp
 
-[🇪🇸 Versión en español](./README.es.md)
+[🇺🇸 English version](./README.md)
 
-MCP server for web search without paid APIs.
-Uses DuckDuckGo to get URLs and crawl4ai (Playwright) to read the full content, including pages that render with JavaScript.
+Servidor MCP para búsqueda web sin APIs de pago.
+Usa DuckDuckGo para obtener URLs y crawl4ai (Playwright) para leer el contenido completo, incluyendo páginas que renderizan con JavaScript.
 
-## Available Tools
+## Tools disponibles
 
-| Tool | Description |
+| Tool | Descripción |
 |------|-------------|
-| `web_search` | Searches DuckDuckGo, optionally fetches full page content |
-| `fetch_page` | Reads clean text from any URL (supports JS) |
-| `multi_search` | Up to 5 parallel searches |
+| `web_search` | Busca en DuckDuckGo, opcionalmente hace fetch del contenido completo |
+| `fetch_page` | Lee el texto limpio de cualquier URL (soporta JS) |
+| `multi_search` | Hasta 5 búsquedas en paralelo |
 
-## Environment Variables
+## Variables de entorno
 
-| Variable | Default | Description |
+| Variable | Default | Descripción |
 |----------|---------|-------------|
-| `WEB_SEARCH_MAX_CHARS` | `4000` | Max characters per page |
-| `WEB_SEARCH_REGION` | `mx-es` | DuckDuckGo search region |
-| `WEB_SEARCH_TIMEOUT` | `15` | HTTP timeout in seconds |
+| `WEB_SEARCH_MAX_CHARS` | `4000` | Máximo de caracteres por página |
+| `WEB_SEARCH_REGION` | `mx-es` | Región de búsqueda DuckDuckGo |
+| `WEB_SEARCH_TIMEOUT` | `15` | Timeout HTTP en segundos |
 
 ---
 
-## Installation Options
+## Opciones de instalación
 
-### Option 1 — Automatic script (recommended for agents)
+### Opción 1 — Script automático (recomendado para agentes)
 
-Installs everything with a single command, including Playwright and Chromium:
+Instala todo con un solo comando, incluyendo Playwright y Chromium:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/tuusuario/web-search-mcp/main/install.sh | bash
 ```
 
-The script:
-1. Checks / installs `uv` if not present
-2. Installs the package from GitHub
-3. Runs `web-search-mcp-setup` (installs Playwright + Chromium)
-4. Prints the JSON config block ready to copy
+El script:
+1. Verifica / instala `uv` si no está presente
+2. Instala el paquete desde GitHub
+3. Corre `web-search-mcp-setup` (instala Playwright + Chromium)
+4. Imprime el bloque JSON de configuración listo para copiar
 
 ---
 
-### Option 2 — uvx from GitHub (without cloning)
+### Opción 2 — uvx desde GitHub (sin clonar)
 
 ```bash
-# Step 1: setup (first time only)
+# Paso 1: setup (solo la primera vez)
 uvx --from git+https://github.com/tuusuario/web-search-mcp web-search-mcp-setup
 
-# Step 2: ready to use
+# Paso 2: ya puedes usarlo
 uvx --from git+https://github.com/tuusuario/web-search-mcp web-search-mcp
 ```
 
-MCP configuration:
+Configuración MCP:
 
 ```json
 {
@@ -68,7 +68,7 @@ MCP configuration:
 }
 ```
 
-With environment variables:
+Con variables de entorno:
 
 ```json
 {
@@ -90,7 +90,7 @@ With environment variables:
 }
 ```
 
-Point to a specific tag or commit:
+Apuntar a un tag o commit específico:
 
 ```json
 "args": ["--from", "git+https://github.com/tuusuario/web-search-mcp@v1.0.0", "web-search-mcp"]
@@ -98,17 +98,17 @@ Point to a specific tag or commit:
 
 ---
 
-### Option 3 — uvx from PyPI (if published)
+### Opción 3 — uvx desde PyPI (si está publicado)
 
 ```bash
-# Setup (first time only)
+# Setup (solo la primera vez)
 uvx web-search-mcp-setup
 
-# Use
+# Usar
 uvx web-search-mcp
 ```
 
-MCP configuration:
+Configuración MCP:
 
 ```json
 {
@@ -123,29 +123,29 @@ MCP configuration:
 
 ---
 
-### Option 4 — pip / uv install local (development)
+### Opción 4 — pip / uv install local (desarrollo)
 
 ```bash
 git clone https://github.com/tuusuario/web-search-mcp
 cd web-search-mcp
 
-# Install in virtual environment
+# Instalar en entorno virtual
 uv venv && uv pip install -e .
 
-# crawl4ai setup
+# Setup de crawl4ai
 web-search-mcp-setup
 
-# Run
+# Ejecutar
 web-search-mcp
 ```
 
-MCP configuration pointing to the local environment:
+Configuración MCP apuntando al entorno local:
 
 ```json
 {
   "mcpServers": {
     "web_search": {
-      "command": "/path/to/venv/bin/web-search-mcp"
+      "command": "/ruta/al/venv/bin/web-search-mcp"
     }
   }
 }
@@ -153,14 +153,14 @@ MCP configuration pointing to the local environment:
 
 ---
 
-### Option 5 — pip install from GitHub (without uv)
+### Opción 5 — pip install desde GitHub (sin uv)
 
 ```bash
 pip install git+https://github.com/tuusuario/web-search-mcp
 web-search-mcp-setup
 ```
 
-MCP configuration:
+Configuración MCP:
 
 ```json
 {
@@ -174,47 +174,47 @@ MCP configuration:
 
 ---
 
-## Where to put the MCP configuration
+## Dónde va la configuración MCP
 
-| Client | File |
-|---------|------|
+| Cliente | Archivo |
+|---------|---------|
 | Claude Desktop (macOS) | `~/Library/Application Support/Claude/claude_desktop_config.json` |
 | Claude Desktop (Windows) | `%APPDATA%\Claude\claude_desktop_config.json` |
-| Claude Code | `.claude/mcp_config.json` in the project, or global config |
-| Custom agent | Wherever your MCP client expects it |
+| Claude Code | `.claude/mcp_config.json` en el proyecto, o config global |
+| Agente custom | Donde tu cliente MCP lo espere |
 
 ---
 
-## Test the installation
+## Probar la instalación
 
 ```bash
-# With MCP Inspector (interactive UI)
+# Con MCP Inspector (UI interactiva)
 npx @modelcontextprotocol/inspector uvx --from git+https://github.com/tuusuario/web-search-mcp web-search-mcp
 
-# Or if installed locally
+# O si instalaste localmente
 npx @modelcontextprotocol/inspector web-search-mcp
 ```
 
 ---
 
-## Publish to PyPI
+## Publicar en PyPI
 
 ```bash
 uv build
 uv publish --token $PYPI_TOKEN
 ```
 
-Once published, Option 3 works without the GitHub URL.
+Una vez publicado, la Opción 3 funciona sin necesidad de la URL de GitHub.
 
 ---
 
-## Project structure
+## Estructura del proyecto
 
 ```
 web-search-mcp/
-├── install.sh                        # Automatic installation script
-├── pyproject.toml                    # Metadata and dependencies
-├── README.es.md
+├── install.sh                        # Script de instalación automática
+├── pyproject.toml                    # Metadata y dependencias
+├── README.md
 └── src/
     └── web_search_mcp/
         ├── __init__.py
