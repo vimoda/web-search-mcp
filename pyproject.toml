@@ -1,0 +1,30 @@
+[project]
+name = "web-search-mcp"
+version = "0.1.0"
+description = "MCP server para búsqueda web sin APIs de pago (DuckDuckGo + crawl4ai)"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+keywords = ["mcp", "search", "web", "duckduckgo", "crawl4ai", "ai", "agent"]
+dependencies = [
+    "mcp>=1.27.0",
+    "httpx>=0.27.0",
+    "beautifulsoup4>=4.12.0",
+    "pydantic>=2.0.0",
+    "crawl4ai>=0.4.0",
+]
+
+[project.scripts]
+web-search-mcp       = "web_search_mcp.server:main"
+web-search-mcp-setup = "web_search_mcp.setup:run_setup"
+
+[project.urls]
+Homepage   = "https://github.com/tuusuario/web-search-mcp"
+Repository = "https://github.com/tuusuario/web-search-mcp"
+
+[build-system]
+requires      = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/web_search_mcp"]
