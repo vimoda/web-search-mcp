@@ -5,31 +5,70 @@
 Servidor MCP para búsqueda web sin APIs de pago.
 Usa DuckDuckGo para obtener URLs y crawl4ai (Playwright) para leer el contenido completo, incluyendo páginas que renderizan con JavaScript.
 
+Diseñado para LLMs: incluye detección de intención, expansión automática de consultas, puntuación de calidad de fuentes, estado de evidencia y acciones recomendadas para el modelo.
+
+## ¿Cuándo debe un LLM usar este MCP?
+
+### ✅ Usa `web_search` cuando:
+- La respuesta puede requerir información **actual, externa o factual**
+- El tema es **específico, local, oscuro o poco conocido** (persona, empresa, producto, evento, API)
+- Necesitas **verificar, comparar, citar o complementar** tu conocimiento
+- El usuario pide **buscar, investigar, verificar o encontrar fuentes**
+- Tu conocimiento interno **puede estar incompleto o desactualizado**
+
+### ❌ NO uses el MCP cuando:
+- La pregunta es sobre **conocimiento general estable** (mates, física, conceptos básicos)
+- La tarea es **escribir, traducir o razonamiento simple**
+- Es **programación básica o algoritmos bien conocidos**
+- El usuario dice explícitamente **que no busques**
+
 ## Tools disponibles
 
 ### `web_search` (recomendada)
-Herramienta de investigación completa. Busca múltiples queries relacionadas, evalúa calidad de fuentes, penaliza redes sociales y contenido vacío, hace fetch selectivo y retorna resultados estructurados con metadatos de calidad.
+Herramienta principal para conocimiento externo. Realiza investigación multi-consulta adaptada a la intención: detecta automáticamente si la consulta es sobre una persona, empresa, tema técnico, noticia o general. Expande consultas inteligentemente, puntúa fuentes, extrae páginas con fallback, deduplica y retorna guía de evidencia.
 
 **Parámetros:**
 - `query` (requerido): Consulta de búsqueda
 - `max_results` (opcional, default: 5): Resultados a retornar (1-10)
-- `fetch_content` (opcional, default: true): Traer contenido completo
-- `max_chars_per_result` (opcional, default: 4000): Carácteres por página (500-10000)
-- `depth` (opcional, default: `"standard"`): Profundidad de investigación
-  - `"quick"`: 1 búsqueda, resultados directos
-  - `"standard"`: 3 búsquedas relacionadas, filtrado de calidad
-  - `"deep"`: 6 búsquedas relacionadas, cobertura exhaustiva
+- `fetch_content` (opcional, default: true): Extraer contenido completo de la página
+- `max_chars_per_result` (opcional, default: 4000): Caracteres por página (500-10000)
+- `depth` (opcional, default: `"standard"`): `"quick"` (1 consulta), `"standard"` (3 consultas, default), `"deep"` (6 consultas)
+- `purpose` (opcional, default: `"answer"`): `"answer"` | `"verify"` | `"complement"` | `"current_info"` | `"sources"` | `"explore"`
+- `search_context` (opcional): Contexto adicional para refinar las búsquedas
 
-**Retorna:** JSON con `results[]` (cada uno con `source_quality`, `content_available`), `searches_performed[]`, `low_quality_sources[]`
+**Retorna:** JSON con:
+- `evidence_status`: `"strong"` | `"partial"` | `"weak"` | `"none"`
+- `recommended_action`: `"answer_normally"` | `"answer_with_caveat"` | `"ask_for_more_context"`
+- `answer_guidance`: `{ should_answer, confidence, caveat, suggested_framing }`
+- `results[]`: cada uno con `title`, `url`, `snippet`, `content`, `source_quality`, `score`, `ranking_reasons[]`, `content_available`
+- `searches_performed[]`, `low_quality_sources[]`
 
 ### `search_links`
-Búsqueda rápida — solo links, títulos y snippets. Usar cuando el usuario pide expresamente URLs.
+Búsqueda rápida — solo links, títulos y snippets. Sin fetch de contenido.
+Usar cuando el usuario pide expresamente URLs o resultados de búsqueda.
 
 ### `fetch_page`
-Lee texto limpio de una URL específica (soporta JS). Usar cuando el usuario da una URL concreta.
+Lee texto limpio de una URL específica con fallback de extracción (crawl4ai -> httpx+bs4 -> HTML metadata).
+Usar cuando el usuario da una URL concreta para inspeccionar.
 
 ### `multi_search`
-Hasta 5 búsquedas en paralelo (solo links/snippets). Para exploración multi-tema.
+Hasta 5 búsquedas en paralelo (solo links/snippets, sin contenido completo).
+Para exploración rápida multi-tema.
+
+## MCP Prompts
+
+Estos prompts están registrados en el servidor MCP para guiar el comportamiento del LLM.
+
+| Prompt | Argumentos | Propósito |
+|--------|-----------|-----------|
+| `web_research_assistant` | — | Prompt general: cuándo/cómo buscar, interpretar evidencia, responder con caveats, regla de idioma |
+| `investigate_person` | `name` | Investigar persona: perfil profesional, empresas, cargos, biografía |
+| `investigate_company` | `company` | Investigar empresa: sitio oficial, fundadores, liderazgo, noticias, financiación |
+| `verify_claim` | `claim` | Verificar afirmación con fuentes |
+| `find_sources` | `topic` | Encontrar fuentes autoritativas (docs, sitios oficiales, medios confiables) |
+| `answer_from_evidence` | — | Estructurar respuesta usando el JSON de web_search (evidence_status, recommended_action, caveats) |
+
+Todos los prompts incluyen la instrucción de idioma: *"Answer in the same language as the user."*
 
 ## Variables de entorno
 
@@ -38,7 +77,10 @@ Hasta 5 búsquedas en paralelo (solo links/snippets). Para exploración multi-te
 | `WEB_SEARCH_MAX_CHARS` | `4000` | Máximo de caracteres por página |
 | `WEB_SEARCH_REGION` | `mx-es` | Región de búsqueda DuckDuckGo |
 | `WEB_SEARCH_TIMEOUT` | `15` | Timeout HTTP en segundos |
-| `WEB_SEARCH_LOG_LEVEL` | (silencioso) | Nivel de log: `OFF`/`SILENT` (default), `ERROR`, `INFO`, `DEBUG`. Asignar para ver acciones en stderr |
+| `WEB_SEARCH_LOG_LEVEL` | (silencioso) | Nivel de log: `OFF`/`SILENT` (default), `ERROR`, `INFO`, `DEBUG` |
+| `WEB_SEARCH_DEFAULT_DEPTH` | `standard` | Profundidad por defecto: `quick`, `standard`, `deep` |
+| `WEB_SEARCH_MAX_CONCURRENT_FETCHES` | `3` | Fetch simultáneos máximos |
+| `WEB_SEARCH_FETCH_TIMEOUT` | `20` | Timeout de fallback de fetch en segundos |
 
 ---
 
