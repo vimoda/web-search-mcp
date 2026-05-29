@@ -13,6 +13,7 @@ from web_search_mcp.server import (
     verify_claim,
     find_sources,
     answer_from_evidence,
+    quote_or_guide_router,
 )
 
 
@@ -144,3 +145,29 @@ class TestAllPrompts:
         ]
         for name, text in prompts:
             assert "web_search" in text, f"{name} missing web_search reference"
+
+
+class TestQuoteOrGuideRouter:
+    def test_mentions_quote_only(self):
+        result = quote_or_guide_router()
+        assert "quote_only" in result
+
+    def test_mentions_guide_generation(self):
+        result = quote_or_guide_router()
+        assert "guide_generation" in result
+
+    def test_mentions_research_answer(self):
+        result = quote_or_guide_router()
+        assert "research_answer" in result
+
+    def test_mentions_shipping_configured(self):
+        result = quote_or_guide_router()
+        assert "shipping_configured" in result
+
+    def test_mentions_declared_value(self):
+        result = quote_or_guide_router()
+        assert "declared_value" in result
+
+    def test_mentions_language(self):
+        result = quote_or_guide_router()
+        assert "language" in result.lower()

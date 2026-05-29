@@ -62,6 +62,17 @@ The JSON response includes:
   find relevant information and suggest refining the query.
 - **language_instruction**: Always follow this rule.
 
+### Response intent (how to structure your answer)
+
+The web_search response includes `response_intent` and `llm_workflow`.
+
+- **response_intent="quote_only"** → The user wants pricing/budget info.
+  Do NOT generate a guide or tutorial. Follow `llm_workflow` instructions.
+- **response_intent="guide_generation"** → The user wants step-by-step
+  instructions or a workflow. Follow `llm_workflow` structure.
+- **response_intent="research_answer"** → Default. Answer the factual
+  question with appropriate evidence.
+
 ## Do NOT chain multiple tool calls unnecessarily
 
 web_search already does multi-phase research internally. Only call it once
@@ -176,6 +187,46 @@ You have received web_search results. Follow this structure:
 
 5. **Language**:
    - Answer in the user's language.
+
+{_LANGUAGE_RULE}
+"""
+
+
+def quote_or_guide_router() -> str:
+    return f"""
+Decide how to respond based on the web_search result's `response_intent` field.
+
+## If response_intent is "quote_only"
+
+The user wants pricing, budget, or cost information. Follow the `llm_workflow`
+instructions in the response. Do NOT:
+
+- Generate a tutorial, guide, or step-by-step implementation.
+- Go beyond pricing, plans, and cost comparisons.
+- Assume prices not found in the results.
+
+Instead focus on:
+1. Prices, plans, tiers, or cost ranges found.
+2. What is included at each price point.
+3. Provider, currency, billing period.
+4. If no prices found, say so clearly and suggest checking official sites.
+5. Always indicate `shipping_configured` (true / false / unknown).
+6. If insurance is requested, include `declared_value`.
+7. If insurance is requested but no declared value is given, ask the user
+   for the declared value before generating the quote.
+
+## If response_intent is "guide_generation"
+
+The user wants step-by-step instructions or a workflow. Follow the `llm_workflow`
+structure in the response (prerequisites, numbered steps, decision points,
+risks, next steps).
+
+- If `query_type` is "technical", include code/CLI/config examples when available.
+- If evidence is weak, separate what came from search vs general knowledge.
+
+## If response_intent is "research_answer"
+
+Default behavior. Answer the factual question with appropriate evidence.
 
 {_LANGUAGE_RULE}
 """

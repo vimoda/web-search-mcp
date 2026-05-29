@@ -9,6 +9,8 @@ from __future__ import annotations
 import pytest
 from web_search_mcp.server import (
     _detect_query_type,
+    _detect_response_intent,
+    _detect_quote_requirements,
     _extract_discovered_terms,
     _build_followup_queries,
     _score_source,
@@ -281,3 +283,74 @@ class TestGetDomain:
 
     def test_no_path(self):
         assert _get_domain("https://example.com") == "example.com"
+
+
+# ── _detect_response_intent ────────────────────────────────────────────────────
+
+class TestDetectResponseIntent:
+    def test_general_query_returns_research(self):
+        assert _detect_response_intent("who is Antar Nakid", "answer") == "research_answer"
+
+    def test_quote_keyword_detected(self):
+        assert _detect_response_intent("cotizar envío", "answer") == "quote_only"
+
+    def test_guide_keyword_detected(self):
+        assert _detect_response_intent("genera una guía para implementar MCP", "answer") == "guide_generation"
+
+    def test_purpose_quote_forces_quote(self):
+        assert _detect_response_intent("web hosting", "quote") == "quote_only"
+
+    def test_purpose_guide_forces_guide(self):
+        assert _detect_response_intent("web hosting", "guide") == "guide_generation"
+
+    def test_pricing_detected(self):
+        assert _detect_response_intent("cuanto cuesta aws hosting", "answer") == "quote_only"
+
+    def test_how_to_detected(self):
+        assert _detect_response_intent("how to deploy a website", "answer") == "guide_generation"
+
+    def test_quote_short_word_detected(self):
+        assert _detect_response_intent("precio de servidores", "answer") == "quote_only"
+
+    def test_search_context_helps(self):
+        assert _detect_response_intent("MCP", "answer", "how to implement") == "guide_generation"
+
+
+# ── _detect_quote_requirements ──────────────────────────────────────────────────
+
+class TestDetectQuoteRequirements:
+    def test_no_insurance_no_declared_value(self):
+        result = _detect_quote_requirements("cotizar envío a CDMX")
+        assert result["insurance_requested"] is False
+        assert result["declared_value"] is None
+        assert result["missing_declared_value"] is False
+
+    def test_insurance_without_declared_value_blocks_quote(self):
+        result = _detect_quote_requirements("cotizar envío con seguro a CDMX")
+        assert result["insurance_requested"] is True
+        assert result["declared_value"] is None
+        assert result["missing_declared_value"] is True
+
+    def test_insurance_with_declared_value_allows_quote(self):
+        result = _detect_quote_requirements("cotizar envío con seguro valor declarado 5000 a CDMX")
+        assert result["insurance_requested"] is True
+        assert result["declared_value"] == 5000
+        assert result["missing_declared_value"] is False
+
+    def test_insurance_with_declared_value_usd(self):
+        result = _detect_quote_requirements("quote with insurance declared value $10000")
+        assert result["insurance_requested"] is True
+        assert result["declared_value"] == 10000
+        assert result["missing_declared_value"] is False
+
+    def test_search_context_declared_value(self):
+        result = _detect_quote_requirements("cotizar envío con seguro", "valor declarado 20000")
+        assert result["insurance_requested"] is True
+        assert result["declared_value"] == 20000
+        assert result["missing_declared_value"] is False
+
+    def test_no_insurance_no_block(self):
+        result = _detect_quote_requirements("cotizar envío estándar")
+        assert result["insurance_requested"] is False
+        assert result["declared_value"] is None
+        assert result["missing_declared_value"] is False

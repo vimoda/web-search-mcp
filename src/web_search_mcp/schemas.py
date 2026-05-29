@@ -33,7 +33,7 @@ class SearchInput(BaseModel):
     )
     purpose: Optional[str] = Field(
         default="answer",
-        description="Purpose: 'answer', 'verify', 'complement', 'current_info', 'sources', 'explore'",
+        description="Purpose: 'answer', 'verify', 'complement', 'current_info', 'sources', 'explore', 'quote', 'guide'",
     )
     search_context: Optional[str] = Field(
         default=None,

@@ -49,6 +49,20 @@ PURPOSE_EXPANSIONS = {
     "current_info": ["{query} latest", "{query} 2026", "{query} news", "{query} update"],
     "sources": ["{query} source", "{query} citation", "{query} reference", "{query} references"],
     "explore": [],
+    "quote": [
+        "{query} pricing plans",
+        "{query} price cost",
+        "{query} subscription fee",
+        "{query} quote estimate",
+        "{query} budget",
+    ],
+    "guide": [
+        "{query} step by step guide",
+        "{query} implementation workflow",
+        "{query} tutorial how to",
+        "{query} best practices",
+        "{query} setup configuration",
+    ],
 }
 
 

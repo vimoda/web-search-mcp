@@ -13,6 +13,10 @@ from .query_refinement import _is_simple_or_ambiguous_query, _refine_query
 from .query_expansion import _expand_queries, _build_followup_queries
 from .evidence import _compute_evidence_status
 from .errors import _handle_http_error
+from .response_intent import (
+    _detect_response_intent, _get_response_intent_display, _detect_quote_requirements,
+)
+from .workflow_guidance import _build_llm_workflow_guidance
 from .schemas import SearchInput
 
 _STOP_WORDS = {
@@ -87,7 +91,7 @@ async def web_search_service(params: SearchInput) -> str:
         depth = "standard"
 
     purpose = (params.purpose or "answer").strip().lower()
-    valid_purposes = {"answer", "verify", "complement", "current_info", "sources", "explore"}
+    valid_purposes = {"answer", "verify", "complement", "current_info", "sources", "explore", "quote", "guide"}
     if purpose not in valid_purposes:
         purpose = "answer"
 
@@ -95,6 +99,36 @@ async def web_search_service(params: SearchInput) -> str:
         original_query = params.query
         query_type = _detect_query_type(original_query, params.search_context)
         log.info("Query type detected: %s", query_type)
+
+        response_intent = _detect_response_intent(original_query, purpose, params.search_context)
+        log.info("Response intent detected: %s", response_intent)
+
+        if response_intent == "quote_only":
+            quote_reqs = _detect_quote_requirements(original_query, params.search_context)
+            if quote_reqs["missing_declared_value"]:
+                log.info("Blocking quote: insurance requested without declared value")
+                payload = {
+                    "original_query": original_query,
+                    "purpose": purpose,
+                    "response_intent": "quote_only",
+                    "response_intent_label": _get_response_intent_display(response_intent),
+                    "recommended_action": "ask_for_declared_value",
+                    "should_generate_quote": False,
+                    "should_generate_guide": False,
+                    "missing_required_fields": ["declared_value"],
+                    "message": (
+                        "Insurance was requested but no declared value was provided. "
+                        "Please provide the declared value before requesting a quote."
+                    ),
+                    "answer_guidance": {
+                        "language_instruction": "Answer in the same language as the user.",
+                        "should_answer": True,
+                        "confidence": "high",
+                        "caveat": None,
+                        "suggested_framing": "",
+                    },
+                }
+                return json.dumps(payload, ensure_ascii=False, indent=2)
 
         is_simple, refinement_reason = _is_simple_or_ambiguous_query(
             original_query, params.search_context,
@@ -164,6 +198,8 @@ async def web_search_service(params: SearchInput) -> str:
                 "refinement_reason": refinement_reason if query_was_refined else None,
                 "depth": depth,
                 "purpose": purpose,
+                "response_intent": response_intent,
+                "response_intent_label": _get_response_intent_display(response_intent),
                 "searches_performed": expanded,
                 "follow_up_searches_performed": followup_searches_performed,
                 "discovered_terms": discovered,
@@ -178,6 +214,11 @@ async def web_search_service(params: SearchInput) -> str:
                     "suggested_framing": "",
                 },
                 "message": "No results found.",
+                "llm_workflow": _build_llm_workflow_guidance(
+                    response_intent, "none", query_type,
+                )["llm_workflow"],
+                "should_generate_guide": response_intent == "guide_generation",
+                "should_generate_quote": response_intent == "quote_only",
             }
             return json.dumps(payload, ensure_ascii=False, indent=2)
     except Exception as e:
@@ -247,6 +288,10 @@ async def web_search_service(params: SearchInput) -> str:
 
     evidence = _compute_evidence_status(final_results, low_list, len(all_searches))
 
+    wf = _build_llm_workflow_guidance(
+        response_intent, evidence["evidence_status"], query_type,
+    )
+
     payload = {
         "original_query": original_query,
         "refined_query": refined_query,
@@ -254,6 +299,8 @@ async def web_search_service(params: SearchInput) -> str:
         "refinement_reason": refinement_reason if query_was_refined else None,
         "depth": depth,
         "purpose": purpose,
+        "response_intent": response_intent,
+        "response_intent_label": _get_response_intent_display(response_intent),
         "searches_performed": expanded,
         "follow_up_searches_performed": followup_searches_performed,
         "discovered_terms": discovered,
@@ -265,6 +312,9 @@ async def web_search_service(params: SearchInput) -> str:
             "language_instruction": "Answer in the same language as the user.",
             **evidence["answer_guidance"],
         },
+        "llm_workflow": wf["llm_workflow"],
+        "should_generate_guide": wf["should_generate_guide"],
+        "should_generate_quote": wf["should_generate_quote"],
     }
     if low_list:
         payload["low_quality_sources"] = low_list
