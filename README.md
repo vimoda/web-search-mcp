@@ -7,11 +7,12 @@ Uses DuckDuckGo to get URLs and crawl4ai (Playwright) to read the full content, 
 
 ## Available Tools
 
-| Tool | Description |
-|------|-------------|
-| `web_search` | Searches DuckDuckGo, optionally fetches full page content |
-| `fetch_page` | Reads clean text from any URL (supports JS) |
-| `multi_search` | Up to 5 parallel searches |
+| Tool | Description | Use when |
+|------|-------------|----------|
+| `web_search` | **(Recommended)** Searches, reads pages, extracts text, returns sources | User needs an answer, explanation, summary, or current facts |
+| `search_links` | Searches and returns only links, titles, and snippets | User explicitly wants URLs or quick search results |
+| `fetch_page` | Reads clean text from a specific URL (supports JS) | User provides a specific URL to inspect |
+| `multi_search` | Up to 5 parallel searches (links/snippets only) | User asks to investigate multiple topics at once |
 
 ## Environment Variables
 

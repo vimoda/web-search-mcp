@@ -7,11 +7,12 @@ Usa DuckDuckGo para obtener URLs y crawl4ai (Playwright) para leer el contenido 
 
 ## Tools disponibles
 
-| Tool | Descripción |
-|------|-------------|
-| `web_search` | Busca en DuckDuckGo, opcionalmente hace fetch del contenido completo |
-| `fetch_page` | Lee el texto limpio de cualquier URL (soporta JS) |
-| `multi_search` | Hasta 5 búsquedas en paralelo |
+| Tool | Descripción | Cuándo usar |
+|------|-------------|-------------|
+| `web_search` | **(Recomendada)** Busca, lee páginas, extrae texto, retorna fuentes | Cuando el usuario necesita respuesta, explicación, resumen o hechos actuales |
+| `search_links` | Busca y retorna solo links, títulos y snippets | Cuando el usuario pide expresamente URLs o resultados rápidos |
+| `fetch_page` | Lee el texto limpio de una URL específica (soporta JS) | Cuando el usuario da una URL concreta para inspeccionar |
+| `multi_search` | Hasta 5 búsquedas en paralelo (solo links/snippets) | Cuando el usuario pide investigar múltiples subtemas a la vez |
 
 ## Variables de entorno
 

@@ -170,8 +170,31 @@ class SearchInput(BaseModel):
         le=10,
     )
     fetch_content: Optional[bool] = Field(
-        default=False,
-        description="Si True, hace fetch del contenido completo de cada página además del snippet",
+        default=True,
+        description="Si True (default), hace fetch del contenido completo de cada página además del snippet",
+    )
+    max_chars_per_result: Optional[int] = Field(
+        default=4000,
+        description="Máximo de caracteres a retornar por cada página (500-10000)",
+        ge=500,
+        le=10000,
+    )
+
+
+class LinkSearchInput(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
+
+    query: str = Field(
+        ...,
+        description="Consulta de búsqueda (ej: 'python async tips 2024')",
+        min_length=1,
+        max_length=300,
+    )
+    max_results: Optional[int] = Field(
+        default=5,
+        description="Número máximo de resultados a retornar (1-10)",
+        ge=1,
+        le=10,
     )
 
 
@@ -213,7 +236,7 @@ class MultiSearchInput(BaseModel):
 @mcp.tool(
     name="web_search",
     annotations={
-        "title": "Buscar en la web",
+        "title": "Buscar y leer contenido de la web (recomendado)",
         "readOnlyHint": True,
         "destructiveHint": False,
         "idempotentHint": True,
@@ -221,23 +244,34 @@ class MultiSearchInput(BaseModel):
     },
 )
 async def web_search(params: SearchInput) -> str:
-    """Busca información en internet usando DuckDuckGo sin necesidad de API key.
+    """Herramienta PRINCIPAL para responder preguntas usando información de internet.
 
-    Retorna una lista de resultados con título, URL y snippet de cada página.
-    Opcionalmente puede hacer fetch del contenido completo de cada resultado.
+    Realiza el flujo completo automáticamente:
+    1. Busca en DuckDuckGo
+    2. Abre las páginas más relevantes
+    3. Extrae el texto limpio
+    4. Retorna fuentes con contenido
+
+    Usa esta herramienta cuando el usuario necesite una respuesta, explicación,
+    comparación, resumen o hechos actuales basados en información de la web.
+    NO uses search_links cuando el usuario pida una respuesta concreta.
 
     Args:
         params (SearchInput): Parámetros de búsqueda:
             - query (str): Consulta de búsqueda
             - max_results (int): Resultados a retornar (default: 5)
-            - fetch_content (bool): Si traer el contenido completo de las páginas
+            - fetch_content (bool): Si traer el contenido (default: true)
+            - max_chars_per_result (int): Caráx. por página (default: 4000)
 
     Returns:
-        str: JSON con lista de resultados. Cada resultado incluye:
-            - title (str): Título de la página
-            - url (str): URL de la página
-            - snippet (str): Extracto del contenido
-            - content (str, opcional): Texto completo si fetch_content=True
+        str: JSON con:
+            - query (str): Consulta original
+            - total (int): Número de resultados
+            - results (list): Lista de resultados, cada uno con:
+                - title (str): Título de la página
+                - url (str): URL de la página
+                - snippet (str): Extracto del contenido
+                - content (str): Texto completo extraído de la página
     """
     log.info("Tool web_search: \"%s\" (fetch_content=%s)", params.query, params.fetch_content)
     try:
@@ -252,12 +286,65 @@ async def web_search(params: SearchInput) -> str:
     if params.fetch_content:
         async def enrich(r: dict) -> dict:
             try:
-                r["content"] = await _fetch_page(r["url"])
+                r["content"] = await _fetch_page(r["url"], params.max_chars_per_result)
             except Exception as e:
                 r["content"] = f"No se pudo obtener el contenido: {_handle_http_error(e)}"
             return r
 
         results = await asyncio.gather(*[enrich(r) for r in results])
+
+    return json.dumps(
+        {"query": params.query, "total": len(results), "results": results},
+        ensure_ascii=False,
+        indent=2,
+    )
+
+
+@mcp.tool(
+    name="search_links",
+    annotations={
+        "title": "Buscar links y snippets (solo resultados rápidos)",
+        "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": True,
+    },
+)
+async def search_links(params: LinkSearchInput) -> str:
+    """Busca en la web y retorna solo links, títulos y snippets (sin contenido).
+
+    Usa esta herramienta SOLO cuando el usuario pida expresamente:
+    - Links o URLs de búsqueda
+    - Resultados rápidos sin leer el contenido
+    - Una lista de páginas relacionadas
+
+    NO uses esta herramienta cuando el usuario necesite una respuesta,
+    explicación o resumen basado en el contenido de las páginas.
+    Para eso usa web_search.
+
+    Args:
+        params (LinkSearchInput): Parámetros de búsqueda:
+            - query (str): Consulta de búsqueda
+            - max_results (int): Resultados a retornar (default: 5)
+
+    Returns:
+        str: JSON con:
+            - query (str): Consulta original
+            - total (int): Número de resultados
+            - results (list): Lista de resultados, cada uno con:
+                - title (str): Título de la página
+                - url (str): URL de la página
+                - snippet (str): Extracto del contenido
+    """
+    log.info("Tool search_links: \"%s\"", params.query)
+    try:
+        results = await _ddg_search(params.query, params.max_results)
+    except Exception as e:
+        log.error("Error en search_links: %s", _handle_http_error(e))
+        return json.dumps({"error": _handle_http_error(e), "results": []})
+
+    if not results:
+        return json.dumps({"query": params.query, "results": [], "message": "Sin resultados"})
 
     return json.dumps(
         {"query": params.query, "total": len(results), "results": results},
@@ -277,10 +364,11 @@ async def web_search(params: SearchInput) -> str:
     },
 )
 async def fetch_page(params: FetchInput) -> str:
-    """Lee y extrae el texto limpio de cualquier página web.
+    """Lee y extrae el texto limpio de una página web específica.
 
-    Útil para profundizar en una URL específica obtenida de una búsqueda.
-    Remueve scripts, estilos, menús y footer para retornar solo el contenido relevante.
+    Usa esta herramienta solo cuando el usuario proporciona una URL concreta
+    o cuando necesitas inspeccionar una página conocida.
+    NO la uses para responder preguntas generales; para eso usa web_search.
 
     Args:
         params (FetchInput): Parámetros:
@@ -309,7 +397,7 @@ async def fetch_page(params: FetchInput) -> str:
 @mcp.tool(
     name="multi_search",
     annotations={
-        "title": "Múltiples búsquedas en paralelo",
+        "title": "Múltiples búsquedas en paralelo (solo links/snippets)",
         "readOnlyHint": True,
         "destructiveHint": False,
         "idempotentHint": True,
@@ -317,10 +405,11 @@ async def fetch_page(params: FetchInput) -> str:
     },
 )
 async def multi_search(params: MultiSearchInput) -> str:
-    """Ejecuta varias búsquedas en paralelo y consolida los resultados.
+    """Ejecuta varias búsquedas en paralelo y retorna links/snippets por cada una.
 
-    Útil cuando necesitas investigar múltiples subtemas al mismo tiempo.
-    Ejecuta todas las queries de forma concurrente para reducir la latencia.
+    Usa esta herramienta cuando el usuario pida investigar múltiples subtemas
+    al mismo tiempo y solo necesite links y resúmenes rápidos.
+    Si necesitas contenido completo para cada query, usa web_search por cada una.
 
     Args:
         params (MultiSearchInput): Parámetros:
