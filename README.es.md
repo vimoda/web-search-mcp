@@ -7,12 +7,29 @@ Usa DuckDuckGo para obtener URLs y crawl4ai (Playwright) para leer el contenido 
 
 ## Tools disponibles
 
-| Tool | Descripción | Cuándo usar |
-|------|-------------|-------------|
-| `web_search` | **(Recomendada)** Busca, lee páginas, extrae texto, retorna fuentes | Cuando el usuario necesita respuesta, explicación, resumen o hechos actuales |
-| `search_links` | Busca y retorna solo links, títulos y snippets | Cuando el usuario pide expresamente URLs o resultados rápidos |
-| `fetch_page` | Lee el texto limpio de una URL específica (soporta JS) | Cuando el usuario da una URL concreta para inspeccionar |
-| `multi_search` | Hasta 5 búsquedas en paralelo (solo links/snippets) | Cuando el usuario pide investigar múltiples subtemas a la vez |
+### `web_search` (recomendada)
+Herramienta de investigación completa. Busca múltiples queries relacionadas, evalúa calidad de fuentes, penaliza redes sociales y contenido vacío, hace fetch selectivo y retorna resultados estructurados con metadatos de calidad.
+
+**Parámetros:**
+- `query` (requerido): Consulta de búsqueda
+- `max_results` (opcional, default: 5): Resultados a retornar (1-10)
+- `fetch_content` (opcional, default: true): Traer contenido completo
+- `max_chars_per_result` (opcional, default: 4000): Carácteres por página (500-10000)
+- `depth` (opcional, default: `"standard"`): Profundidad de investigación
+  - `"quick"`: 1 búsqueda, resultados directos
+  - `"standard"`: 3 búsquedas relacionadas, filtrado de calidad
+  - `"deep"`: 6 búsquedas relacionadas, cobertura exhaustiva
+
+**Retorna:** JSON con `results[]` (cada uno con `source_quality`, `content_available`), `searches_performed[]`, `low_quality_sources[]`
+
+### `search_links`
+Búsqueda rápida — solo links, títulos y snippets. Usar cuando el usuario pide expresamente URLs.
+
+### `fetch_page`
+Lee texto limpio de una URL específica (soporta JS). Usar cuando el usuario da una URL concreta.
+
+### `multi_search`
+Hasta 5 búsquedas en paralelo (solo links/snippets). Para exploración multi-tema.
 
 ## Variables de entorno
 

@@ -7,12 +7,29 @@ Uses DuckDuckGo to get URLs and crawl4ai (Playwright) to read the full content, 
 
 ## Available Tools
 
-| Tool | Description | Use when |
-|------|-------------|----------|
-| `web_search` | **(Recommended)** Searches, reads pages, extracts text, returns sources | User needs an answer, explanation, summary, or current facts |
-| `search_links` | Searches and returns only links, titles, and snippets | User explicitly wants URLs or quick search results |
-| `fetch_page` | Reads clean text from a specific URL (supports JS) | User provides a specific URL to inspect |
-| `multi_search` | Up to 5 parallel searches (links/snippets only) | User asks to investigate multiple topics at once |
+### `web_search` (recommended)
+Full research tool. Searches multiple related queries, scores source quality, penalizes social media and empty content, fetches pages selectively, and returns structured results with quality metadata.
+
+**Parameters:**
+- `query` (required): Search query
+- `max_results` (optional, default: 5): Results to return (1-10)
+- `fetch_content` (optional, default: true): Fetch full page content
+- `max_chars_per_result` (optional, default: 4000): Characters per page (500-10000)
+- `depth` (optional, default: `"standard"`): Research depth
+  - `"quick"`: single query, direct results
+  - `"standard"`: 3 related queries, quality filtering
+  - `"deep"`: 6 related queries, exhaustive coverage
+
+**Returns:** JSON with `results[]` (each with `source_quality`, `content_available`), `searches_performed[]`, `low_quality_sources[]`
+
+### `search_links`
+Quick search — links, titles, and snippets only. Use when the user explicitly asks for URLs.
+
+### `fetch_page`
+Reads clean text from a specific URL (supports JS). Use when the user provides a specific URL.
+
+### `multi_search`
+Up to 5 parallel searches (links/snippets only). Use for multi-topic exploration.
 
 ## Environment Variables
 

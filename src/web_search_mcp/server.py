@@ -8,6 +8,7 @@ import json
 import os
 import asyncio
 import logging
+import urllib.parse
 from typing import Optional
 from pydantic import BaseModel, Field, ConfigDict
 import httpx
@@ -121,9 +122,8 @@ async def _ddg_search(query: str, max_results: int) -> list[dict]:
 
         # DuckDuckGo a veces wrappea la URL — la limpiamos
         if url.startswith("//duckduckgo.com/l/?uddg="):
-            from urllib.parse import unquote, urlparse, parse_qs
-            qs = parse_qs(urlparse(url).query)
-            url = unquote(qs.get("uddg", [url])[0])
+            qs = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)
+            url = urllib.parse.unquote(qs.get("uddg", [url])[0])
 
         if url and title:
             results.append({"title": title, "url": url, "snippet": snippet})
@@ -152,6 +152,75 @@ async def _fetch_page(url: str, max_chars: int = MAX_TEXT_LENGTH) -> str:
     return text[:max_chars]
 
 
+# ── Calidad de fuentes y expansión de búsqueda ───────────────────────────────
+
+LOW_QUALITY_DOMAINS: dict[str, str] = {
+    "instagram.com": "social media, limited accessible content",
+    "facebook.com": "social media, limited accessible content",
+    "tiktok.com": "social media, limited accessible content",
+    "pinterest.com": "social media, limited accessible content",
+    "x.com": "social media, limited accessible content",
+    "twitter.com": "social media, limited accessible content",
+}
+
+HIGH_QUALITY_DOMAINS: dict[str, str] = {
+    "linkedin.com": "professional profile",
+    "wikipedia.org": "encyclopedic source",
+    "bloomberg.com": "news source",
+    "reuters.com": "news source",
+}
+
+
+def _score_source(url: str, snippet: str, content: str | None = None) -> dict:
+    """Score a source and return quality metadata."""
+    domain = urllib.parse.urlparse(url).netloc.lower()
+    if domain.startswith("www."):
+        domain = domain[4:]
+
+    for low_domain, reason in LOW_QUALITY_DOMAINS.items():
+        if low_domain in domain:
+            return {"score": 0.1, "quality": "low", "reason": reason}
+
+    for high_domain, reason in HIGH_QUALITY_DOMAINS.items():
+        if high_domain in domain:
+            return {"score": 0.9, "quality": "high", "reason": reason}
+
+    if not snippet or len(snippet.strip()) < 30:
+        return {"score": 0.3, "quality": "low", "reason": "very short or empty snippet"}
+
+    if content and len(content.strip()) < 100:
+        return {"score": 0.4, "quality": "low", "reason": "fetched content too short"}
+
+    return {"score": 0.7, "quality": "medium", "reason": "standard web source"}
+
+
+def _deduplicate(results: list[dict]) -> list[dict]:
+    """Remove duplicate URLs, keeping the first occurrence."""
+    seen: set[str] = set()
+    deduped: list[dict] = []
+    for r in results:
+        key = r["url"].rstrip("/").lower()
+        if key not in seen:
+            seen.add(key)
+            deduped.append(r)
+    return deduped
+
+
+def _expand_queries(query: str, depth: str) -> list[str]:
+    """Generate related queries for deeper research."""
+    queries = [query]
+    if depth == "standard":
+        queries.append(f"{query} profile")
+        queries.append(f"{query} official")
+    elif depth == "deep":
+        queries.append(f"{query} profile")
+        queries.append(f"{query} official")
+        queries.append(f"{query} biography")
+        queries.append(f"{query} career")
+        queries.append(f"{query} company")
+    return queries
+
+
 # ── Modelos de entrada ────────────────────────────────────────────────────────
 
 class SearchInput(BaseModel):
@@ -178,6 +247,10 @@ class SearchInput(BaseModel):
         description="Máximo de caracteres a retornar por cada página (500-10000)",
         ge=500,
         le=10000,
+    )
+    depth: Optional[str] = Field(
+        default="standard",
+        description="Profundidad de investigación: 'quick' (1 query, resultados directos), 'standard' (3 queries, calidad), 'deep' (6 queries, exhaustivo)",
     )
 
 
@@ -246,58 +319,134 @@ class MultiSearchInput(BaseModel):
 async def web_search(params: SearchInput) -> str:
     """Herramienta PRINCIPAL para responder preguntas usando información de internet.
 
-    Realiza el flujo completo automáticamente:
-    1. Busca en DuckDuckGo
-    2. Abre las páginas más relevantes
-    3. Extrae el texto limpio
-    4. Retorna fuentes con contenido
+    Realiza investigación multi-query automática:
+    - quick: 1 búsqueda, resultados directos con fetch opcional
+    - standard (default): 3 búsquedas relacionadas, filtra fuentes pobres,
+      prioriza páginas con contenido, fetch de las mejores fuentes
+    - deep: 6 búsquedas relacionadas, cobertura exhaustiva
 
-    Usa esta herramienta cuando el usuario necesite una respuesta, explicación,
-    comparación, resumen o hechos actuales basados en información de la web.
-    NO uses search_links cuando el usuario pida una respuesta concreta.
+    Después de buscar, evalúa calidad de cada fuente, penaliza redes sociales
+    y contenido vacío, y hace fetch selectivo solo de los mejores resultados.
+
+    Usa esta herramienta para cualquier pregunta que requiera información
+    actual, externa o factual. NO uses search_links para respuestas concretas.
 
     Args:
-        params (SearchInput): Parámetros de búsqueda:
+        params (SearchInput):
             - query (str): Consulta de búsqueda
             - max_results (int): Resultados a retornar (default: 5)
             - fetch_content (bool): Si traer el contenido (default: true)
-            - max_chars_per_result (int): Caráx. por página (default: 4000)
+            - max_chars_per_result (int): Carácteres por página (default: 4000)
+            - depth (str): Profundidad: 'quick', 'standard', 'deep' (default: 'standard')
 
     Returns:
         str: JSON con:
             - query (str): Consulta original
-            - total (int): Número de resultados
-            - results (list): Lista de resultados, cada uno con:
-                - title (str): Título de la página
-                - url (str): URL de la página
-                - snippet (str): Extracto del contenido
-                - content (str): Texto completo extraído de la página
+            - depth (str): Profundidad usada
+            - searches_performed (list): Queries ejecutadas
+            - total (int): Resultados devueltos
+            - results (list): Cada resultado:
+                - title (str), url (str), snippet (str)
+                - content (str, si fetch_content)
+                - source_quality (str): 'high' | 'medium' | 'low'
+                - content_available (bool)
+            - low_quality_sources (list): Fuentes pobres omitidas
     """
-    log.info("Tool web_search: \"%s\" (fetch_content=%s)", params.query, params.fetch_content)
+    log.info(
+        "Tool web_search: \"%s\" (depth=%s, fetch=%s, max=%d)",
+        params.query, params.depth, params.fetch_content, params.max_results,
+    )
+
+    depth = params.depth.strip().lower() if params.depth else "standard"
+    if depth not in ("quick", "standard", "deep"):
+        depth = "standard"
+
     try:
-        results = await _ddg_search(params.query, params.max_results)
+        if depth == "quick":
+            expanded = [params.query]
+            internal_limit = params.max_results
+        else:
+            expanded = _expand_queries(params.query, depth)
+            internal_limit = params.max_results * (2 if depth == "standard" else 3)
+
+        searches = await asyncio.gather(
+            *[_ddg_search(q, internal_limit) for q in expanded],
+            return_exceptions=True,
+        )
+
+        all_results: list[dict] = []
+        search_errors: list[str] = []
+        for q, search_result in zip(expanded, searches):
+            if isinstance(search_result, Exception):
+                search_errors.append(f'"{q}": {_handle_http_error(search_result)}')
+                continue
+            all_results.extend(search_result)
+
+        if not all_results:
+            payload = {"query": params.query, "results": [], "message": "Sin resultados"}
+            if expanded:
+                payload["searches_performed"] = expanded
+            return json.dumps(payload, ensure_ascii=False, indent=2)
     except Exception as e:
         log.error("Error en web_search: %s", _handle_http_error(e))
         return json.dumps({"error": _handle_http_error(e), "results": []})
 
-    if not results:
-        return json.dumps({"query": params.query, "results": [], "message": "Sin resultados"})
+    all_results = _deduplicate(all_results)
+
+    scored = []
+    for r in all_results:
+        meta = _score_source(r["url"], r.get("snippet", ""))
+        scored.append((meta["score"], meta, r))
+
+    scored.sort(key=lambda x: x[0], reverse=True)
+
+    to_fetch = scored[: params.max_results]
+    low_quality = [s for s in scored[params.max_results :] if s[1]["quality"] == "low"]
 
     if params.fetch_content:
-        async def enrich(r: dict) -> dict:
+        async def enrich(item: tuple[float, dict, dict]) -> dict:
+            _, meta, r = item
             try:
                 r["content"] = await _fetch_page(r["url"], params.max_chars_per_result)
+                content_text = r.get("content") or ""
+                if len(content_text.strip()) < 100:
+                    meta = _score_source(r["url"], r.get("snippet", ""), content_text)
+                r["content_available"] = bool(r.get("content"))
             except Exception as e:
-                r["content"] = f"No se pudo obtener el contenido: {_handle_http_error(e)}"
+                r["content"] = None
+                r["content_available"] = False
+            r["source_quality"] = meta["quality"]
             return r
 
-        results = await asyncio.gather(*[enrich(r) for r in results])
+        final_results = await asyncio.gather(*[enrich(item) for item in to_fetch])
+    else:
+        final_results = []
+        for _, meta, r in to_fetch:
+            r["source_quality"] = meta["quality"]
+            r["content_available"] = False
+            final_results.append(r)
 
-    return json.dumps(
-        {"query": params.query, "total": len(results), "results": results},
-        ensure_ascii=False,
-        indent=2,
-    )
+    low_list = []
+    for _, meta, r in low_quality:
+        low_list.append({
+            "title": r.get("title", ""),
+            "url": r.get("url", ""),
+            "reason": meta.get("reason", "low quality source"),
+        })
+
+    payload: dict = {
+        "query": params.query,
+        "depth": depth,
+        "searches_performed": expanded,
+        "total": len(final_results),
+        "results": final_results,
+    }
+    if low_list:
+        payload["low_quality_sources"] = low_list
+    if search_errors:
+        payload["search_errors"] = search_errors
+
+    return json.dumps(payload, ensure_ascii=False, indent=2)
 
 
 @mcp.tool(
