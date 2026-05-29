@@ -15,10 +15,6 @@ from bs4 import BeautifulSoup
 from crawl4ai import AsyncWebCrawler, CrawlerRunConfig
 from mcp.server.fastmcp import FastMCP
 
-# ── Inicialización ────────────────────────────────────────────────────────────
-
-mcp = FastMCP("web_search_mcp")
-
 # ── Constantes (configurables via env vars) ───────────────────────────────────
 
 MAX_TEXT_LENGTH = int(os.getenv("WEB_SEARCH_MAX_CHARS", "4000"))
@@ -32,16 +28,28 @@ LOG_LEVELS = {
     "WARNING": logging.WARNING,
     "ERROR": logging.ERROR,
     "CRITICAL": logging.CRITICAL,
-    "OFF": None,
-    "SILENT": None,
 }
+
+_SILENT = LOG_LEVEL.upper().strip() in ("OFF", "SILENT", "")
+
+# ── Inicialización ────────────────────────────────────────────────────────────
+
+mcp_log_level = "CRITICAL" if _SILENT else LOG_LEVEL.upper().strip()
+mcp = FastMCP("web_search_mcp", log_level=mcp_log_level)
+
+# ── Logger de la app ──────────────────────────────────────────────────────────
 
 log = logging.getLogger("web-search-mcp")
 log.propagate = False
 _configured_level = LOG_LEVELS.get(LOG_LEVEL.upper().strip())
-if _configured_level is None:
+if _SILENT:
     log.disabled = True
     log.setLevel(logging.CRITICAL + 1)
+    for _name in ("mcp", "httpx", "httpcore"):
+        _l = logging.getLogger(_name)
+        _l.disabled = True
+        _l.setLevel(logging.CRITICAL + 1)
+        _l.propagate = False
 else:
     log.disabled = False
     log.setLevel(_configured_level)
@@ -52,6 +60,9 @@ else:
         datefmt="%H:%M:%S",
     ))
     log.addHandler(handler)
+    for _name in ("httpx", "httpcore"):
+        _l = logging.getLogger(_name)
+        _l.setLevel(_configured_level)
 
 HEADERS = {
     "User-Agent": (
