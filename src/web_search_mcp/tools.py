@@ -9,6 +9,13 @@ from .logging_config import log
 
 
 async def web_search(params: SearchInput) -> str:
+    """Full iterative web search with refinement, entity discovery, and evidence assessment.
+
+    For quote requests:
+    - Always suggest quoting with and without insurance.
+    - If insurance is requested but no declared_value is provided, ask for it before quoting.
+    - The response includes llm_workflow instructions in the llm_workflow field.
+    """
     return await web_search_service(params)
 
 

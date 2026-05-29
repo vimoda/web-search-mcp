@@ -14,6 +14,7 @@ from web_search_mcp.server import (
     find_sources,
     answer_from_evidence,
     quote_or_guide_router,
+    choose_quote_flow,
 )
 
 
@@ -48,6 +49,12 @@ class TestWebResearchAssistant:
             pass
         # Check that the prompt body is in English
         assert "You are" in result or "web research" in result.lower()
+
+    def test_quote_insurance_language(self):
+        result = web_research_assistant()
+        assert "without insurance" in result.lower()
+        assert "with insurance" in result.lower()
+        assert "declared_value" in result.lower()
 
 
 class TestInvestigatePerson:
@@ -170,4 +177,43 @@ class TestQuoteOrGuideRouter:
 
     def test_mentions_language(self):
         result = quote_or_guide_router()
+        assert "language" in result.lower()
+
+    def test_mentions_insurance_options(self):
+        result = quote_or_guide_router()
+        assert "without insurance" in result.lower()
+        assert "with insurance" in result.lower()
+
+    def test_mentions_declared_value_requirement(self):
+        result = quote_or_guide_router()
+        assert "declared_value" in result.lower()
+        assert "do not generate" in result.lower()
+
+
+class TestChooseQuoteFlow:
+    def test_is_string(self):
+        result = choose_quote_flow()
+        assert isinstance(result, str)
+        assert len(result) > 100
+
+    def test_check_memory_for_addresses(self):
+        result = choose_quote_flow()
+        assert "check your memory" in result.lower()
+        assert "saved addresses" in result.lower()
+
+    def test_insurance_options(self):
+        result = choose_quote_flow()
+        assert "without insurance" in result.lower()
+        assert "with insurance" in result.lower()
+
+    def test_declared_value(self):
+        result = choose_quote_flow()
+        assert "declared_value" in result.lower()
+
+    def test_shipping_configured(self):
+        result = choose_quote_flow()
+        assert "shipping_configured" in result.lower()
+
+    def test_language_rule(self):
+        result = choose_quote_flow()
         assert "language" in result.lower()

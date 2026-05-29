@@ -29,6 +29,7 @@ from .tools import web_search, search_links, fetch_page, multi_search
 from .prompts import (
     web_research_assistant, investigate_person, investigate_company,
     verify_claim, find_sources, answer_from_evidence, quote_or_guide_router,
+    choose_quote_flow,
 )
 from .app import mcp
 

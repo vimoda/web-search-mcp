@@ -11,6 +11,7 @@ from web_search_mcp.server import (
     _detect_query_type,
     _detect_response_intent,
     _detect_quote_requirements,
+    _build_llm_workflow_guidance,
     _extract_discovered_terms,
     _build_followup_queries,
     _score_source,
@@ -354,3 +355,47 @@ class TestDetectQuoteRequirements:
         assert result["insurance_requested"] is False
         assert result["declared_value"] is None
         assert result["missing_declared_value"] is False
+
+
+# ── _build_llm_workflow_guidance ──────────────────────────────────────────────
+
+class TestBuildWorkflowGuidance:
+    def test_quote_workflow_mentions_insurance_options(self):
+        result = _build_llm_workflow_guidance("quote_only", "strong", "general")
+        workflow = result["llm_workflow"]
+        assert "without insurance" in workflow.lower()
+        assert "with insurance" in workflow.lower()
+
+    def test_quote_workflow_mentions_declared_value(self):
+        result = _build_llm_workflow_guidance("quote_only", "strong", "general")
+        workflow = result["llm_workflow"]
+        assert "declared_value" in workflow.lower()
+
+    def test_quote_workflow_rejects_missing_declared_value(self):
+        result = _build_llm_workflow_guidance("quote_only", "strong", "general")
+        workflow = result["llm_workflow"]
+        assert "must not generate" in workflow.lower() or "must not" in workflow.lower()
+
+    def test_quote_workflow_weak_evidence(self):
+        result = _build_llm_workflow_guidance("quote_only", "weak", "general")
+        workflow = result["llm_workflow"]
+        assert "limited or unavailable" in workflow.lower()
+        assert "official sites" in workflow.lower()
+
+    def test_guide_workflow_no_insurance_language(self):
+        result = _build_llm_workflow_guidance("guide_generation", "strong", "technical")
+        workflow = result["llm_workflow"]
+        assert "USER INTENT" in workflow
+        assert "step-by-step" in workflow.lower()
+
+    def test_research_workflow_no_insurance_language(self):
+        result = _build_llm_workflow_guidance("research_answer", "strong", "general")
+        workflow = result["llm_workflow"]
+        assert "USER INTENT" in workflow
+        assert "answer with confidence" in workflow.lower()
+
+    def test_quote_workflow_struct(self):
+        result = _build_llm_workflow_guidance("quote_only", "none", "general")
+        assert result["response_intent"] == "quote_only"
+        assert result["should_generate_quote"] is True
+        assert result["should_generate_guide"] is False

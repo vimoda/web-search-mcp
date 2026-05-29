@@ -67,7 +67,10 @@ The JSON response includes:
 The web_search response includes `response_intent` and `llm_workflow`.
 
 - **response_intent="quote_only"** → The user wants pricing/budget info.
-  Do NOT generate a guide or tutorial. Follow `llm_workflow` instructions.
+   Do NOT generate a guide or tutorial. Follow `llm_workflow` instructions.
+   Always offer both options: quote without insurance and quote with insurance.
+   If insurance is wanted, the user must provide a declared_value.
+   If insurance is requested but declared_value is missing, ask for it before quoting.
 - **response_intent="guide_generation"** → The user wants step-by-step
   instructions or a workflow. Follow `llm_workflow` structure.
 - **response_intent="research_answer"** → Default. Answer the factual
@@ -192,6 +195,36 @@ You have received web_search results. Follow this structure:
 """
 
 
+def choose_quote_flow() -> str:
+    return f"""
+You are helping the user generate a quote (pricing / budget / cost information).
+
+Before responding, check your memory for saved addresses. If the user already has
+registered addresses, use them instead of asking for new ones.
+
+## Insurance options (always offer)
+
+Always offer the user both options:
+  a) **Quote without insurance** — base price, no coverage.
+  b) **Quote with insurance** — includes coverage for loss or damage.
+
+If insurance is wanted, the user must provide a **declared_value** (the amount
+to insure). If they asked for insurance but did NOT provide a declared_value,
+you MUST NOT generate the quote. Instead, ask them for the declared value first.
+
+## Shipping
+
+Indicate `shipping_configured` as one of: true / false / unknown.
+If the quote includes shipping, specify: origin, destination, carrier, and
+estimated delivery time if available.
+
+Do NOT generate a tutorial, guide, or step-by-step implementation.
+Focus strictly on prices, plans, tiers, and what is included.
+
+{_LANGUAGE_RULE}
+"""
+
+
 def quote_or_guide_router() -> str:
     return f"""
 Decide how to respond based on the web_search result's `response_intent` field.
@@ -211,9 +244,11 @@ Instead focus on:
 3. Provider, currency, billing period.
 4. If no prices found, say so clearly and suggest checking official sites.
 5. Always indicate `shipping_configured` (true / false / unknown).
-6. If insurance is requested, include `declared_value`.
-7. If insurance is requested but no declared value is given, ask the user
-   for the declared value before generating the quote.
+6. **Always offer both options**: quote without insurance and quote with insurance.
+7. If insurance is wanted, the user must provide a **declared_value**.
+8. If insurance is requested but no declared value is given, ask the user
+   for the declared value before generating the quote. Do NOT generate the
+   quote without it.
 
 ## If response_intent is "guide_generation"
 
