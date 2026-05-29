@@ -7,6 +7,7 @@ crawl4ai usa Playwright internamente para soportar páginas con JavaScript.
 import json
 import os
 import asyncio
+import logging
 from typing import Optional
 from pydantic import BaseModel, Field, ConfigDict
 import httpx
@@ -23,6 +24,14 @@ mcp = FastMCP("web_search_mcp")
 MAX_TEXT_LENGTH = int(os.getenv("WEB_SEARCH_MAX_CHARS", "4000"))
 SEARCH_REGION   = os.getenv("WEB_SEARCH_REGION", "mx-es")
 REQUEST_TIMEOUT = int(os.getenv("WEB_SEARCH_TIMEOUT", "15"))
+LOG_LEVEL       = os.getenv("WEB_SEARCH_LOG_LEVEL", "ERROR")
+
+logging.basicConfig(
+    level=getattr(logging, LOG_LEVEL.upper(), logging.ERROR),
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%H:%M:%S",
+)
+log = logging.getLogger("web-search-mcp")
 
 HEADERS = {
     "User-Agent": (
@@ -60,6 +69,7 @@ async def _ddg_search(query: str, max_results: int) -> list[dict]:
     Hace una búsqueda en DuckDuckGo (HTML endpoint) y retorna una lista de resultados.
     Cada resultado tiene: title, url, snippet.
     """
+    log.info("Buscando: \"%s\" (max=%d, region=%s)", query, max_results, SEARCH_REGION)
     async with httpx.AsyncClient(headers=HEADERS, timeout=REQUEST_TIMEOUT, follow_redirects=True) as client:
         r = await client.post(DDGS_SEARCH_URL, data={"q": query, "kl": SEARCH_REGION})
         r.raise_for_status()
@@ -87,11 +97,13 @@ async def _ddg_search(query: str, max_results: int) -> list[dict]:
         if url and title:
             results.append({"title": title, "url": url, "snippet": snippet})
 
+    log.info("Resultados para \"%s\": %d", query, len(results))
     return results
 
 
 async def _fetch_page(url: str, max_chars: int = MAX_TEXT_LENGTH) -> str:
     """Hace fetch de una URL con crawl4ai (soporta JS) y retorna markdown limpio."""
+    log.info("Fetching: %s", url)
     config = CrawlerRunConfig(
         word_count_threshold=10,       # ignora bloques con menos de 10 palabras
         exclude_external_links=True,   # quita links externos del markdown
@@ -103,8 +115,9 @@ async def _fetch_page(url: str, max_chars: int = MAX_TEXT_LENGTH) -> str:
     if not result.success:
         raise RuntimeError(result.error_message or "crawl4ai no pudo obtener la página")
 
-    # crawl4ai entrega markdown limpio listo para LLMs
     text = result.markdown or result.cleaned_html or ""
+    chars = len(text[:max_chars])
+    log.info("Fetch exitoso: %s (%d chars)", url, chars)
     return text[:max_chars]
 
 
@@ -195,9 +208,11 @@ async def web_search(params: SearchInput) -> str:
             - snippet (str): Extracto del contenido
             - content (str, opcional): Texto completo si fetch_content=True
     """
+    log.info("Tool web_search: \"%s\" (fetch_content=%s)", params.query, params.fetch_content)
     try:
         results = await _ddg_search(params.query, params.max_results)
     except Exception as e:
+        log.error("Error en web_search: %s", _handle_http_error(e))
         return json.dumps({"error": _handle_http_error(e), "results": []})
 
     if not results:
@@ -247,6 +262,7 @@ async def fetch_page(params: FetchInput) -> str:
             - content (str): Texto extraído de la página
             - chars (int): Número de caracteres retornados
     """
+    log.info("Tool fetch_page: %s", params.url)
     try:
         text = await _fetch_page(params.url, params.max_chars)
         return json.dumps(
@@ -255,6 +271,7 @@ async def fetch_page(params: FetchInput) -> str:
             indent=2,
         )
     except Exception as e:
+        log.error("Error en fetch_page %s: %s", params.url, e)
         return json.dumps({"url": params.url, "error": str(e)})
 
 
@@ -284,11 +301,14 @@ async def multi_search(params: MultiSearchInput) -> str:
             - query (str): Consulta original
             - results (list): Lista de resultados para esa query
     """
+    log.info("Tool multi_search: %d queries", len(params.queries))
+
     async def search_one(q: str) -> dict:
         try:
             results = await _ddg_search(q, params.max_results_per_query)
             return {"query": q, "results": results}
         except Exception as e:
+            log.error("Error en multi_search query \"%s\": %s", q, _handle_http_error(e))
             return {"query": q, "error": _handle_http_error(e), "results": []}
 
     all_results = await asyncio.gather(*[search_one(q) for q in params.queries])
