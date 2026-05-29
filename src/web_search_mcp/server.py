@@ -24,14 +24,34 @@ mcp = FastMCP("web_search_mcp")
 MAX_TEXT_LENGTH = int(os.getenv("WEB_SEARCH_MAX_CHARS", "4000"))
 SEARCH_REGION   = os.getenv("WEB_SEARCH_REGION", "mx-es")
 REQUEST_TIMEOUT = int(os.getenv("WEB_SEARCH_TIMEOUT", "15"))
-LOG_LEVEL       = os.getenv("WEB_SEARCH_LOG_LEVEL", "ERROR")
+LOG_LEVEL = os.getenv("WEB_SEARCH_LOG_LEVEL", "")
 
-logging.basicConfig(
-    level=getattr(logging, LOG_LEVEL.upper(), logging.ERROR),
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    datefmt="%H:%M:%S",
-)
+LOG_LEVELS = {
+    "DEBUG": logging.DEBUG,
+    "INFO": logging.INFO,
+    "WARNING": logging.WARNING,
+    "ERROR": logging.ERROR,
+    "CRITICAL": logging.CRITICAL,
+    "OFF": None,
+    "SILENT": None,
+}
+
 log = logging.getLogger("web-search-mcp")
+log.propagate = False
+_configured_level = LOG_LEVELS.get(LOG_LEVEL.upper().strip())
+if _configured_level is None:
+    log.disabled = True
+    log.setLevel(logging.CRITICAL + 1)
+else:
+    log.disabled = False
+    log.setLevel(_configured_level)
+    handler = logging.StreamHandler()
+    handler.setLevel(_configured_level)
+    handler.setFormatter(logging.Formatter(
+        "%(asctime)s [%(levelname)s] %(message)s",
+        datefmt="%H:%M:%S",
+    ))
+    log.addHandler(handler)
 
 HEADERS = {
     "User-Agent": (

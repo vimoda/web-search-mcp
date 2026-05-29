@@ -20,7 +20,7 @@ Usa DuckDuckGo para obtener URLs y crawl4ai (Playwright) para leer el contenido 
 | `WEB_SEARCH_MAX_CHARS` | `4000` | Máximo de caracteres por página |
 | `WEB_SEARCH_REGION` | `mx-es` | Región de búsqueda DuckDuckGo |
 | `WEB_SEARCH_TIMEOUT` | `15` | Timeout HTTP en segundos |
-| `WEB_SEARCH_LOG_LEVEL` | `ERROR` | Nivel de log: `ERROR`, `INFO`, `DEBUG` (muestra acciones en stderr) |
+| `WEB_SEARCH_LOG_LEVEL` | (silencioso) | Nivel de log: `OFF`/`SILENT` (default), `ERROR`, `INFO`, `DEBUG`. Asignar para ver acciones en stderr |
 
 ---
 
